@@ -198,7 +198,11 @@ t.test(edad, mu = 50) ### Edad media observada vs. esperada
 
 ```{r}
 # Visualizamos su contenido
-table(granda.Rank.2$tecnica)
+table(granda$tecnica)
+```
+
+```{r}
+granda[granda == 0] <- "Lichtenstein"
 ```
 
 ```{r}
@@ -213,7 +217,7 @@ ggplot(granda, aes(x=tecnica, y=edad)) +
 # Aplicamos un diseño diferente para el diagrama de cajas
 ggplot(granda, aes(x=tecnica, y=edad)) +
   geom_boxplot(fill='#BFD4FF') +
-  theme_classic+
+  theme_classic()+
   labs (title="Diagrama de cajas", y= "Edad", x="Técnica")  + 
   theme(plot.title = element_text(hjust = 0.5))
 ```
