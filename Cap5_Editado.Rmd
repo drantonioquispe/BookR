@@ -1,0 +1,295 @@
+---
+title: "Cap5_ANÁLISIS BIVARIADO Y PRUEBA DE HIPÓTESIS"
+output: html_notebook
+---
+
+# Instalación de paquetes
+
+```{r}
+install.packages("tidyverse")
+install.packages("infer")
+install.packages("broom")
+install.packages("knitr")
+install.packages("readxl")
+install.packages("cowplot")
+install.packages("nycflights13")
+install.packages("corrplot")
+install.packages("Hmisc")
+install.packages("psych")
+install.packages("skimr")
+install.packages("rlang")
+install.packages("estimatr")
+install.packages("margins")
+install.packages("stargazer")
+install.packages("lmtest")
+install.packages("foreign")
+install.packages("GGally")
+install.packages("AICcmodavg")
+install.package("gridExtra")
+```
+
+# Carga de librerías
+
+```{r}
+library(tidyverse)
+library(infer)
+library(broom)
+library(knitr)
+library(readxl)
+library(cowplot)
+library(nycflights13)
+library(dplyr)
+library(stringr)
+library(infer)
+library(datasets)
+library(corrplot)
+library(psych)
+library(skimr)
+library(rlang)
+library(estimatr)
+library(margins)
+library(stargazer)
+library(lmtest)
+library(ggpubr)
+library(foreign)
+library(GGally)
+library(AICcmodavg)
+library(gridExtra)
+library(readxl)
+library(readr)
+```
+
+
+# Carga de data
+
+```{r}
+granda <- read.csv("Granda.csv", fileEncoding = "UTF-8")
+
+is.data.frame(granda)  #Verificando si se ha cargado bien
+```
+# Visualización de la base de datos
+
+```{r}
+str(granda) # Nos muestra que la base de datos es un data frame
+```
+```{r}
+glimpse(granda)
+```
+```{r}
+# Verificamos los datos perdidos
+table (complete.cases(granda))
+```
+
+# Configuración de la base de datos
+
+```{r}
+#attach(granda)
+```
+
+Ejemplo de la función de attach:
+Se calculará la media de la variable edad y peso
+```{r}
+# Sin el uso de attach
+
+# Calcular la media de la columna "edad"
+media_edad <- mean(granda$edad)
+
+# Calcular la desviación estándar de la columna "peso"
+desv_peso <- sd(granda$peso)
+
+```
+
+
+```{r}
+# Con el uso de attach
+attach(granda) # Adjuntar el marco de datos "granda" al espacio de nombres global
+```
+
+```{r}
+# Calcular la media de la columna "edad", sin especificar el nombre del marco de datos
+media_edad <- mean(edad)
+
+# Calcular la desviación estándar de la columna "peso", sin especificar el nombre del marco de datos
+desv_peso <- sd(peso)
+```
+
+
+```{r}
+# Desadjuntar el marco de datos "datos" del espacio de nombres global
+detach(granda)
+```
+
+
+# Comparación de correlaciones
+```{r}
+cor(granda$peso,granda$talla,
+    method = c("pearson"))
+
+cor(granda$peso, granda$talla,
+  method = c("spearman"))
+
+cor(granda$peso,granda$talla,
+    method = c("kendall"))
+```
+```{r}
+#Creamos un rango para la variable "peso"
+peso.Rank <-rank(granda$peso, na.last=NA,ties.method="first")
+```
+
+```{r}
+#Creamos un nuevo conjunto de datos con el rango de peso  #llamado "granda.Rank.1 
+granda.Rank.1<-cbind(peso.Rank=peso.Rank,granda)
+```
+
+```{r}
+#comprobamos
+View(granda.Rank.1)
+```
+
+# Segunda comparación de las correlaciones
+
+```{r}
+cor(granda.Rank.1$peso.Rank,granda.Rank.1$talla,
+    method=c("pearson"))
+
+cor(granda.Rank.1$peso.Rank,granda.Rank.1$talla,
+    method=c("spearman"))
+
+cor(granda.Rank.1$peso.Rank,granda.Rank.1$talla,
+    method=c("kendall"))
+
+```
+
+```{r}
+#Transformemos la variable talla en un rango también,
+#solo para ver cómo se ve:
+
+talla.Rank <-rank(granda.Rank.1$talla, na.last=NA,ties.method="first")
+granda.Rank.2 <-cbind(talla.Rank=talla.Rank,granda.Rank.1)
+#comprobamos
+view(granda.Rank.2)
+
+```
+
+# Tercera comparación de las correlaciones
+
+```{r}
+cor(granda.Rank.2$peso.Rank,granda.Rank.2$talla.Rank,
+    method=c("pearson"))
+
+cor(granda.Rank.2$peso.Rank,granda.Rank.2$talla.Rank,
+    method=c("spearman"))
+
+cor(granda.Rank.2$peso.Rank,granda.Rank.2$talla.Rank,
+    method=c("kendall"))
+```
+
+# T Student para comparación de medias independientes
+
+```{r}
+t.test(granda$edad ~ granda$tecnica) ### técnica vs edad
+
+```
+
+```{r}
+t.test(edad, mu = 50) ### Edad media observada vs. esperada
+```
+# Diagrama de cajas de la variable tecnica
+
+```{r}
+# Visualizamos su contenido
+table(granda.Rank.2$tecnica)
+```
+
+```{r}
+ggplot(granda, aes(x=tecnica, y=edad)) +
+  geom_boxplot(fill='#BFD4FF') +
+  labs (title="Diagrama de cajas", y= "Edad", x="Técnica")  + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+# Aplicamos un diseño diferente para el diagrama de cajas
+ggplot(granda, aes(x=tecnica, y=edad)) +
+  geom_boxplot(fill='#BFD4FF') +
+  theme_classic+
+  labs (title="Diagrama de cajas", y= "Edad", x="Técnica")  + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+# Mann Whitney para comparación de medianas independientes
+
+```{r}
+wilcox.test(granda$t_hosp ~ granda$r_complic) #Mediana de tiempo de hospitalizacion x complicaciones 
+```
+
+```{r}
+wilcox.test(edad, mu = 50) # Edad mediana observada vs. esperada
+```
+
+# Chi cuadrado para comparación de proporciones independientes
+
+```{r}
+# Comprobamos que las variables son dicotómicas
+table(granda$sexo)
+table(granda$anestesia)
+```
+```{r}
+#SEXO vs. ANESTESIA
+chisq.test(granda$sexo,granda$anestesia) 
+```
+```{r}
+#SEXO vs. TECNICA
+chisq.test(granda$sexo, granda$tecnica)
+```
+
+# Exacta de Fischer para comparación de proporciones independientes
+
+```{r}
+#t_hosp vs. anciano
+## Con este código podemos obtener el valor de Chi cuadrado
+##para muestras pequeñas (frecuencias menores a 5)
+simulacion <- granda %>% select(t_hosp, anciano) %>% head(n=20) #reducimos la muestra
+fisher.test(simulacion, simulate.p.value = TRUE)
+
+```
+
+# T de Student para comparación de medias pareadas
+
+```{r}
+t.test(granda$peso, granda$t_enf, paired = TRUE)
+```
+
+# Wilcoxon para comparación de medianas pareadas
+
+```{r}
+wilcox.test(granda$peso,granda$t_enf, paired = TRUE)
+```
+
+# McNemar para comparación de proporciones pareadas
+```{r}
+mcnemar.test(granda$sexo, granda$obeso)
+```
+
+# ANOVA para comparación de más de dos medias independientes
+```{r}
+granda_anova <- aov(edad ~ sexo * tecnica, 
+                    data = granda)
+summary(granda_anova)
+
+```
+
+# Kruskal Wallis para comparación de más de dos medianas independientes
+
+```{r}
+kruskal.test(t_enf ~ nihus, data = granda)
+```
+
+```{r}
+#Diagrama de caja para verificar la distribución de los datos
+ggplot(granda, aes(x = nihus, y = t_enf, col = nihus)) + geom_boxplot(outlier.shape = NA) + geom_jitter(width = 0.2) + theme(legend.position="top") + labs (y= "Tiempo de la enfermedad", x="Nyhus")
+
+```
+
