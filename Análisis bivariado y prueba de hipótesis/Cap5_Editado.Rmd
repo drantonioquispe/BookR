@@ -208,7 +208,7 @@ granda[granda == 0] <- "Lichtenstein"
 ```{r}
 ggplot(granda, aes(x=tecnica, y=edad)) +
   geom_boxplot(fill='#BFD4FF') +
-  labs (title="Diagrama de cajas", y= "Edad", x="Técnica")  + 
+  labs (title="Diagrama de cajas", y= "Edad (Años)", x="Técnica")  + 
   theme(plot.title = element_text(hjust = 0.5))
 
 ```
@@ -218,7 +218,7 @@ ggplot(granda, aes(x=tecnica, y=edad)) +
 ggplot(granda, aes(x=tecnica, y=edad)) +
   geom_boxplot(fill='#BFD4FF') +
   theme_classic()+
-  labs (title="Diagrama de cajas", y= "Edad", x="Técnica")  + 
+  labs (title="Diagrama de cajas", y= "Edad (Años)", x="Técnica")  + 
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
