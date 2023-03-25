@@ -1,0 +1,471 @@
+---
+title: "Regresion lineal"
+author: "PhD. Antonio M. Quispe"
+date: "25/11/2022"
+output:
+  word_document: default
+  html_document: default
+---
+# Regresión Lineal
+
+En este capítulo se llevará a cabo una regresión lineal, pero antes de proceder, se seguirán algunos pasos previos. En ese sentido, y con el fin de familiarizarnos con los datos y conocer los mejores predictores para el modelo, realizamos un análisis exploratorio y un análisis de correlación múltiple. Luego, nos introducimos en el modelo de regresión propiamente dicho aplicando los métodos Forward y Stepwise; para finalizar, realizamos el análisis post regresión y la selección del modelo óptimo.
+
+## Objetivos de aprendizaje 
+
+Después de finalizar este capítulo debería ser capaz de:
+
+* Conocer las aplicaciones de una regresión lineal.
+* Aprender a manejar el método Forward y Stepwise que pertenecen a los métodos de selección de variables de una regresión lineal.
+* Interpretar los resultados de una regresión lineal y seleccionar el modelo más óptimo.
+* Realizar un análisis post regresión que valide el modelo. 
+
+## Paquetes
+```{r message=FALSE, warning=FALSE}
+#install.packages("dplyr")
+#install.packages("psych")
+#install.packages("GGally")
+#install.packages("AICcmodavg")
+#install.packages("stargazer")
+#install.packages("ggplot2")
+#install.packages("gridExtra")
+#install.packages("car")
+#install.packages("nortest")
+
+library(dplyr) #manipular datos
+library(psych) #múltiples histogramas
+library(GGally) #correlación
+library(AICcmodavg) #comparación de modelos
+library(stargazer) #comparación R2
+library(ggplot2) #gráficos
+library (gridExtra) #organiza gráficos
+library(car) #durbinWatsonTest
+library(nortest) #kolgomorov
+```
+## Estudio de caso
+
+Para analizar la relación entre dos o más  variables cuantitativas se utilizan, por lo general, las técnicas de correlación y regresión lineal. La primera mide la fuerza de la relación y la segunda predice una variable a partir de la suma lineal ponderada de múltiples variables.
+
+En este capítulo examinamos el conjunto de datos libre **mtcars** extraído de la revista Motor Trend US de 1974. En ella se analiza el consumo de combustible y 10 aspectos del diseño y el rendimiento de los automóviles de 32 modelos (1973-74). Utilizaremos estos datos para construir un modelo de regresión lineal. Utilizaremos 6 de estas 10 variables numéricas para construir un modelo de regresión lineal aplicando el método de Forward y Stepwise.
+
+
+
+
+|  Variable       | Descripción     | Tipo de variable   
+|:-----|:-----------------|:-----------------|
+| mpg    | Millas por galón| Cuantitativo
+| disp         |Desplazamiento  | Cuantitativo
+| hp          | Potencia Bruta (caballos de fuerza)| Cuantitativo 
+| drat           |engranaje del eje trasero     | Cuantitativo 
+| wt          |Peso en libras| Cuantitativo 
+| qsec          | 1/4 de milla de tiempo | Cuantitativo
+
+
+Llamamos primero a la base de datos y lo guardamos en el nuevo objeto "data" para luego seleccionar las variables de interés.
+
+
+```{r}
+#llamamos a la base de datos
+data <- mtcars
+
+#seleccionamos las variables de interés
+data <- data %>% dplyr::select(mpg, disp, hp, drat, wt, qsec) 
+```
+
+## Análisis exploratorio
+
+Observamos las primeras 10 filas de la base de datos.
+```{r}
+head(data, n=10)
+```
+**Valores perdidos**
+```{r}
+table(complete.cases(data)) 
+```
+No hay valores perdidos. Todos los datos son verdaderos. La conclusión de que no hay valores perdidos se puede respaldar con el resultado del comando aplicado en Rstudio, el cual muestra el número de casos completos en la base de datos. Si el número de casos completos coincide con el número total de observaciones en la base de datos, entonces se confirma que no hay valores perdidos y que todos los datos son verdaderos. 
+
+**Descripción de los datos**
+
+```{r}
+summary(data)
+```
+**Distribución de las variables**
+
+Con la función `multi.hisp` del paquete `psych` vamos a producir histogramas para cada variable del conjunto de datos. Este gráfico incluye ajustes normales y distribuciones de densidad. En el siguiente comando `dcol`representa los colores para los ajustes normales y de densidad respectivamente y `dlty` se refiere al tipo de línea de cada uno de estos ajustes. El color azul, entonces, representará el ajuste de normalidad y el rojo el de densidad. Adicionalmente, agregamos color a las barras con `bcol`.
+
+```{r}
+multi.hist(data,dcol = c("blue", "red"), 
+           dlty = c("dotted", "solid"), bcol= "grey")
+```
+
+Observamos que la distribución de los datos de las variables "mpg", "drat", "qsec" y "wt" se ubican en el extremo izquierdo, sin embargo, no quiere decir que no estén distribuidos normalmente.
+
+## Análisis de correlación
+
+El coeficiente de correlación indica relaciones lineales en las que a un mayor valor en _X_, corresponde un mayor valor de _Y_. "r" expresa en qué grado los sujetos tienen el mismo orden en las variables _X_ e _Y_. Si la correlación es perfecta (r = 1) el orden de los sujetos en ambas variables es el mismo y el diagrama de dispersión coincidirá con una recta (la recta de regresión). Mientras que "R2" expresa la proporción de variación conjunta (varianza común). 
+
+Decimos que una correlación es perfecta cuando el diagrama de dispersión es una recta que traza una perpendicular desde el eje _X_ hasta la recta y trazando desde la recta otra perpendicular hasta el eje _Y_ (variable dependiente o predicha)
+
+Para identificar cuáles pueden ser los mejores predictores para el modelo de regresión realizamos una correlación múltiple con la función `ggpairs` del paquete `GGally` que permite observar los diagramas de dispersión en el lado izquierdo y los valores de correlación de Pearson y la distribución de las variables al lado derecho, en un solo gráfico. 
+
+
+```{r message=FALSE, warning=FALSE}
+ggpairs(data, lower = list(continuous = "smooth"),
+        diag = list(continuous = "bar"), axisLabels = "none")
+```
+
+Observamos que existen 3 variables con niveles altos de correlación (r >0.75) con las millas por galon (mpg): peso (wt), volumen del motor (disp) y caballos de fuerza (hp).
+
+## Regresión lineal
+
+La regresión lineal puede ser simple (dos variables) o múltiple (más de dos variables).La regresión lineal simple o univariable estudia la relación lineal entre la variable dependiente _Y_ y una única variable independiente _X_. El modelo de regresión lineal describe la variable dependiente con una línea recta definida por la ecuación `Y = a + b × X`, donde "a" es la "y" -intersecto de la recta, y "b" es su pendiente.
+
+Como se aprecia en la siguiente imagen, la línea de regresión permite predecir el valor de la variable dependiente _Y_ a partir de la variable independiente _X_.
+
+La pendiente "b" de la línea de regresión se llama coeficiente de regresión. Proporciona una medida de la contribución de la variable independiente _X_ para explicar la variable dependiente _Y_.
+
+![](D:/aquispe/Book R/cap_7_01.png)
+
+Por otro lado, la regresión multivariada permite el estudio de múltiples variables independientes al mismo tiempo, con ajuste de sus coeficientes de regresión para posibles efectos de confusión entre variables. Este tipo de regresión se aplica ya que en muchos casos la contribución de una sola variable independiente no basta para explicar la variable dependiente.
+
+En el modelo de regresión multivariable, la variable dependiente se describe como una función lineal de las variables independientes X i , como sigue: `Y = a + b1 × X1 + b2 × X 2 +… + b n × X n`. El modelo permite calcular un coeficiente de regresión b i para cada variable independiente X i tal como se muestra en la siguiente imagen.
+
+
+![](D:/aquispe/Book R/cap_7_02.png)
+
+Por lo anterior, una regresión lineal se aplica para predecir o pronosticar, es decir, para crear un modelo de pronóstico para un conjunto de datos específico. A partir de la moda, puede usar la regresión para predecir valores de respuesta donde solo se conocen los predictores. Así también para determinar si existe una relación entre una variable y un predictor, y cuán estrecha es esta relación. 
+A continuación presentaremos los dos métodos más usados de selección de variables para elegir el mejor modelo de regresión. 
+
+
+### Método Forward
+
+Para calcular los AIC y comparar los modelos se utilizará la función `aictab` del paquete `AICcmodavg`.
+
+Veamos cómo se procede con el método Forward.
+
+
+* **Modelo nulo**
+
+
+Solo consideramos la variable dependiente.
+
+```{r}
+modelo_0 <-lm(mpg ~1, data = data )
+summary(modelo_0)
+```
+Este modelo asume que todos los posibles _X_ o variables dependientes tienen un valor de 0, de modo que el valor ajustado para cada conjunto de valores _X_ es la media de la variable de respuesta _Y_. La intersección de la pendiente correspondiente es la media de _Y_, y la desviación estándar de los residuos es la desviación estándar de _Y_. Este modelo nulo se constituye entonces en nuestra línea de base de comparación para los siguientes modelos, de ahí que a continuación lo que debemos hacer es calcular nuestro AIC de partida.
+```{r}
+#Definir el modelo
+models0 <- list(modelo_0)
+
+#Especificar el nombre del modelo
+mod.names0 <- c('mpg')
+
+#Calcular el AIC del modelo nulo
+aictab(cand.set = models0, modnames = mod.names0)
+
+```
+En nuestro ejemplo, el AIC del modelo nulo es 209.17
+
+* **Modelos de primer orden** 
+
+El mejor modelo con una variable.
+```{r}
+modelo_1.1 <- lm(mpg ~ wt, data = data )
+summary(modelo_1.1)
+```
+```{r}
+# Cálculo del intervalo de confianza
+-5.3445 + 1.96 * 0.5591
+-5.3445 - 1.96 * 0.5591
+```
+
+
+```{r}
+# Graficar residuos
+plot(modelo_1.1$residuals, pch = 16, main = "Gráfico de Residuos", 
+     xlab = "Observaciones", ylab = "Residuos")
+# Añadir línea horizontal en cero
+abline(h = 0, col = "red")
+```
+```{r}
+# Crear histograma de residuos
+hist(modelo_1.1$residuals, breaks = 8, main = "Histograma de Residuos", xlab = "Residuos")
+
+# Añadir línea vertical en cero
+abline(v = 0, col = "red")
+
+```
+
+
+Interpretación del output de un modelo de regresión lineal:
+
+- El modelo (call): lm(formula = mpg ~ wt, data = data)
+mpg = b0 + b1(wt)
+
+- Los residuos (residuals): Los residuos son la diferencia entre los valores reales y los valores predichos. En el output se resumen el valor mínimo (Min =-4.5432), el quartil 1 o pertentil 25 (1Q =-2.3647), la mediana (Median =-0.1252), el quartil 3 o percentil 75 (3Q =1.4096) y el valor máximo (Max =6.8727) de los residuos. Para interpretar esto hay que tomar en consideración que si el modelo tuviese un ajuste perfecto la mediana tendria un valor de cero y los malores máximos y mínimo serían simétricos. Según nuestros resultados, podemos notar que la distribución de los residuos del modelo no es simétrica y está sesgada hacia la izquierda. Esto significa que nuestro modelo no predice bien los mpg más bajos como si lo hace con los mpg altos. .
+
+- El estimado de los coeficientes b0 (intercepto) y b1 (X1)
+mpg = 37.2851 + -5.3445(wt)
+En simple, si wt=0 los mpg promedio serían 37.2851 y por cada incremento en una unidad de wt las mpg se  disminuyen en 5.3445 unidades.
+
+- El error estándar del coeficiente b1, es base para calcualar el intervalo de Confianza al 95% de b1 = b1 +/- Z x Error Estándar
+IC 95% de b1 = -5.3445 +/- 1.96 x 0.5591     
+IC 95% : (-6.440336 a -4.248664)
+
+- Es estadístico t y su valor p 
+El valor p, en asociación con la estadística t, prueba la hipótesis nula (H0) de b1 =0. De ahí que cualquier valor de p por debajo de 0,05 suele considerarse significativo y nos permite concluir que X1 explica una fracción significativa de la varianza o variabilidad de Y. En nuestro modelo, podemos ver que los valores p para el Intercepto y wt son significativos y tanto b0 como b1 son diferentes de cero.
+
+- El error estándar residual (residual standard error) es una medida de qué tan bien se ajusta el modelo a los datos. El error estándar residual nos dice la cantidad promedio en que los valores reales de Y (valores observados) difieren de las predicciones (valores predichos) en unidades de Y. Idealmente, lo que queremos el error estándar residual más pequeño posible, porque eso significa que los valores predichos por nuestro modelo está muy cercanos a los valores observados, en promedio. En nuestro modelo los valores predichos difieren en promedio 3.046 unidades de los valores observaos de mpg (con 30 grados de libertad, es decir, la base de datos tiene 31 observaciones).
+
+- El valor de R-cuadrado múltiple (Multiple R-squared) es un estadístico que cuantifica qué porcentaje de la variabilidad de Y está explicada por el modelo. En otras palabras, es otro método para determinar qué tan bien se ajusta nuestro modelo a los datos. En nuestro ejemplo, nuestros datos explican ~75.28% de la variabilidad de mpg, nuestra variable dependiente.
+
+- El estadístico F y su valor p nos permiten probar la hipótesis nula de que que no hay asociación entre la variable dependiente y la(s) variable(s) independiente(s), siendo la hipótesis alternativa que sí hay asociación. Dicho de otra manera, la hipótesis nula es que los coeficientes de todas las variables de tu modelo son cero. La hipótesis alternativa es que al menos uno de ellos no es cero. En nuestro ejemplo, el estadístico F tiene un valor p significativo por lo que concluimos que existe asosiación entre mpg y wt.
+
+En conclusión: wt nos permite predecir las "mpg" de los carros con una alta precisión por sí solo.
+
+```{r}
+modelo_1.2 <- lm(mpg ~ disp, data = data )
+summary(modelo_1.2)
+```
+```{r}
+modelo_1.3 <- lm(mpg ~ hp, data = data )
+summary(modelo_1.3)
+```
+**Comparando los R2 con Stargazer**
+
+Utilizamos la función `stargazer` del paquete del mismo nombre para comparar los R2.
+
+```{r}
+stargazer(modelo_0, modelo_1.1, type = "text")
+```
+**Comparando los modelos de primer orden con la prueba F**
+
+Esta prueba se obtiene al ejecutar un ANOVA.
+
+```{r}
+anova( modelo_1.1, modelo_1.2, modelo_1.3)
+
+```
+
+**Comparando los modelos de primer orden con AIC**
+
+```{r}
+#Definir la lista de modelos
+models1 <- list(modelo_1.1, modelo_1.2, modelo_1.3)
+
+#Especificar los nombres del modelo
+mod.names1 <- c('mpg.wt', 'mpg.disp', 'mpg.hp')
+
+#Calcular el AIC de cada modelo
+#Usamos el paquete AICcmodavg el cual contiene la función aictab
+
+aictab(cand.set = models1, modnames = mod.names1)
+
+```
+
+A simple vista se ve que el modelo 1.1 es el que tiene el menor AIC por lo que peso (wt) entraría primero al modelo.
+
+* **Modelos de segundo orden** 
+```{r}
+modelo_2.1 <- lm(mpg ~ wt + disp, data = data )
+summary(modelo_2.1 )
+```
+```{r}
+modelo_2.2 <- lm(mpg ~ wt + hp , data = data )
+summary(modelo_2.2 )
+```
+
+**Comparando los R2 con Stargazer**
+```{r}
+stargazer(modelo_2.1, modelo_2.2, type = "text")
+```
+**Comparando los AIC**
+
+```{r}
+#Definir la lista de modelos
+models2 <- list(modelo_2.1, modelo_2.2)
+
+#Especificar los nombres del modelo
+mod.names2 <- c('mpg.wt.disp', 'mpg.wt.hp')
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models2, modnames = mod.names2)
+```
+El modelo 2.2 es el que tiene el menor AIC por lo que peso (wt) y caballos de fuerza (hp) se quedan en el modelo
+
+
+* **Modelo de tercer orden** 
+```{r}
+modelo_3.1 <- lm(mpg ~ wt + hp + disp , data = data )
+# Observamos
+summary(modelo_3.1 )
+``` 
+**Comparando los AIC**
+
+```{r}
+#Definir la lista de modelos
+models3 <- list(modelo_3.1)
+
+#Especificar los nombres del modelo
+mod.names3 <- c('mpg.wt.hp.disp')
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models3, modnames = mod.names3)
+```
+El modelo 3.1 tiene mayor AIC que el modelo 2.2. En conclusión, nos quedamos con el modelo 2.2 como modelo óptimo y descartamos de nuestro análisis la variable "disp".
+
+#### Método Stepwise
+
+A igual que el anterior método, la regresión Stepwise inicia con un modelo sin variables independientes  y en cada paso agrega una variable independiente significativa, sin embargo, si en un paso hay una variable no significativa la retira del modelo y repite el paso. En cada etapa se plantea si todas las variables introducidas deben de permanecer en el modelo.
+.
+
+* **Modelo inicial** 
+
+Agregamos las tres variables independientes al modelo inicial.
+
+```{r}
+modelo_inicial <- lm(mpg ~ wt + disp + hp, data = data )
+
+# Observamos
+summary(modelo_inicial)
+
+```
+Las variables de significancia en el modelo son peso (wt) y caballos de fuerza (hp)
+
+**Comprobar los modelos de significancia**
+
+La función `step` nos permite seleccionar un modelo por diferentes criterios. Agregamos `FALSE` en el argumento `trace` para que no se imprima la información detallada al momento de ejecutar la función. 
+```{r}
+step(modelo_inicial, direction = "both", trace=FALSE)
+```
+El resultado nos confirma que las variables de significancia del modelo son peso (wt) y caballos de fuerza (hp).
+
+
+
+* **Modelo final con las variables de significancia**
+```{r}
+modelo_final <- lm(mpg  ~ wt + hp, data = data )
+
+# Observamos
+summary(modelo_final)
+```
+Al haber solo seleccionado las variables de significancia para el modelo, se puede observar que  cuenta con un alto coeficiente de determinacion (0.8268) y un valor p significativo (9.109e-12), con lo que R nos dice que este es el mejor modelo para usar.
+
+## Analisis post regresión
+
+### Linealidad
+
+```{r}
+lmtest::resettest(modelo_final)
+```
+Dado que el valor p es significativo rechazamos la hipótesis de linealidad y concluimos que este supuesto no se cumple, por lo que tendríamos que optar por un modelo de regresión no lineal.
+
+Veamos ahora gráficamente los residuos del modelo final. En el siguiente comando con la función `geom_hline` se intercepta una línea horizontal en el punto 0 y se agregan las funciones `geom_point` y `geom_smooth` para que aparezcan las observaciones y un sobretrazado respectivamente. Por último, `theme_bw` nos permite cambiar el fondo del gráfico y la función `grid.arrange` del paquete `gridExtra` organiza los gráficos de forma que aparezcan en una sola imagen.
+
+```{r message=FALSE, warning=FALSE}
+
+# Caballos de fuerza (hp)
+Linealidad1 <- ggplot(data = data, aes(hp, modelo_final$residuals)) +
+  geom_point() +
+  geom_smooth (color = "red") + 
+  geom_hline (yintercept = 0) +
+  theme_bw ()
+
+# Peso (wt)
+Linealidad2 <- ggplot(data = data, aes(wt, modelo_final$residuals)) +
+  geom_point() + 
+  geom_smooth (color = "red") + 
+  geom_hline (yintercept = 0) + 
+  theme_bw ()
+
+# Graficamos 
+grid.arrange(Linealidad1, Linealidad2)
+
+```
+
+En las gráficas podemos observar diferentes puntos o casos atípicos que retan la hipótesis de linealidad entre las variables independientes y nuestra variable dependiente.
+
+### Independencia de los errores
+
+Para evaluar la independencia de los errores de forma estadística, utilizamos la prueba de Durbin-Watson del paquete `car`.
+```{r}
+durbinWatsonTest(modelo_final)
+```
+No se rechaza la hipótesis nula, es decir, no hay una autocorrelación y por ende se comprueba la independencia de los errores. 
+
+Realizamos un gráfico simple de dispersión de residuos:
+
+```{r}
+plot(residuals(modelo_final), pch=19)
+```
+
+
+### Normalidad
+
+Para comprobar la normalidad realizamos la prueba de Lilliefors (Kolgomorov-Smirnov). La función `lillie.test` se encuentra dentro del paquete `nortest`.
+
+```{r}
+lillie.test(modelo_final$residuals)
+```
+No se rechaza la hipótesis nula, por lo tanto se concluye que los datos están distribuidos normalmente. 
+
+Realizamos un gráfico QQ para observar la distribución de los residuos.
+
+```{r}
+qqPlot(modelo_final)
+
+```
+
+###  Homocedasticidad
+
+```{r}
+lmtest::bgtest(modelo_final)
+```
+
+No se rechaza la hipotesis de homocedasticidad.
+
+Graficamos:
+
+```{r message=FALSE, warning=FALSE}
+ggplot(data = data, aes(modelo_final$fitted.values, modelo_final$residuals)) +
+  geom_point() + 
+  geom_smooth(color = "red", se = FALSE)  +
+  # FALSE para que no aparezca el suavizado de fondo
+  geom_hline(yintercept = 0) + theme_bw()
+
+```
+
+### Modificador de efecto
+
+La presencia o ausencia de un modificador de efecto puede cambiar la asociación de una exposición con el resultado de interés.
+
+#### Modelos 4 y 5 
+
+
+```{r}
+mod4 <-lm(mpg ~ wt*hp, data =data)
+ 
+summary(mod4)
+```
+```{r}
+mod5 <- lm(mpg ~  wt*hp + wt*disp, data =data)
+summary(mod5)
+```
+
+##### Comparando modelos 4 vs el modelo final
+```{r}
+#Definir la lista de modelos
+models <- list(modelo_final, mod4)
+
+#Especificar los nombres del modelo
+mod.names_effect <- c('mpg.wt+hp','mpg.hp.wt')
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models, modnames = mod.names_effect)
+```
+Interpretación: El nuevo modelo final sería el modelo 4 porque tiene un AICc significativamente menor (reducción >4%) al AICc del "modelo final", lo que significa que tiene una mejor bondad de ajuste.
+
+
+## Resumen del capítulo
+
+Antes de realizar un análisis de regresión es importante saber qué variables podrían ingresar al modelo. Por eso, un paso importante es realizar un análisis de correlación para observar que variables pueden tener un mayor coeficiente de correlación. Así como un análisis previo es importante, en una regresión lineal también se tiene que comprobar que el modelo final es el más óptimo. Esto se puede verificar a partir de los supuestos de linealidad, independencia de los errores, normalidad y homocedasticidad, asimismo, un modificador de efecto podría también ajustar mejor nuestro modelo y convertirse en nuestro modelo final, como sucedió en el ejemplo presentado.
