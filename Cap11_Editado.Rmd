@@ -1,0 +1,392 @@
+---
+title: "Regresión de Cox"
+author: "PhD. Antonio M. Quispe"
+date: "12/12/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+# Regresión de Cox
+
+La regresión de Cox se emplea para investigar los efectos de diversas variables sobre el tiempo que tarda en producirse un evento específico. Cuando se trata de un resultado como la muerte, se le denomina como regresión de Cox para el análisis de supervivencia. En este capítulo realizaremos una regresión de Cox, para lo cual primero aprenderemos sobre el análisis de supervivencia y utilizaremos diferentes métodos para realizar la regresión de Cox. Por último, se culminará con el análisis post regresión.
+
+
+## Objetivos de aprendizaje
+
+Después de finalizar este capítulo deberías ser capaz de:
+
+* Conocer los conceptos básicos de análisis de supervivencia 
+* Realizar gráficos de Kaplan-Meier para visualizar las curvas de regresión de Cox 
+* Aplicar regresiones simples y múltiples de Cox con el método Forward y Stepwise
+* Realizar un análisis de post regresión y estimar la proporcionalidad de los Hazards. 
+* Graficar e interpretar los resultados 
+
+## Paquetes
+
+```{r message=FALSE, warning=FALSE}
+# Instalación
+
+#install.packages("dplyr")
+#install.packages("corrplot")
+#install.packages("VIM")
+#install.packages("ggplot2")
+#install.packages("ggfortify")
+#install.packages("AICcmodavg")
+#install.packages("survival")
+#install.packages("survminer")
+#install.packages("rms")
+
+# Llamamos a los paquetes
+library(dplyr) #manipulación de datos
+library(corrplot) #correlación
+library (VIM) #visualización de valores perdidos 
+library(ggplot2) #graficos
+library(ggfortify)#Herramientas de trazado unificado
+library(AICcmodavg) # Comparación de modelos
+library(survival)#análisis de supervivencia
+library(survminer) #dibuja curvas de supervivencia 
+library(rms)#estrategias modelado de regresión
+```
+
+## Estudio de caso
+
+Los factores pronósticos proporcionan información relevante a los pacientes con cáncer y al médico, lo cual es útil para tomar decisiones adecuadas. Asimismo, pueden ser valiosos para estratificar a los pacientes en los ensayos clínicos e interpretar los datos generados por las pruebas. 
+
+Este estudio busca determinar si la información descriptiva de un cuestionario completado por pacientes con cáncer de pulmón del North Central Cancer Treatment Group podría proporcionar información pronóstica que fuera independiente de la ya obtenida por el médico del paciente. Las puntuaciones de rendimiento permiten evaluar qué tan bien el paciente puede realizar las actividades diarias habituales.
+
+
+La base de datos del estudio se encuentra incorporada en el paquete `survival` y contiene 10 variables de estudio:
+
+|  Variable      |     Descripción      | Tipo |
+|:-----|:-----------------|:-------------|
+| inst| Código de la institución  | Cuantitativo | 
+|time  | tiempo de supervivencia en días |   Cuantitativo| 
+| status       |  Estado de censura (1 = censurado, 2 = muerto)|  Cuantitativo| 
+| age| Edad en años|  Cuantitativo| 
+| sex     | Sexo masculino = 1 , femenino = 2 |  Cuantitativo| 
+| ph.ecog     | Puntuación de desempeño ECOG según la calificación del médico (0 = asintomático, 1= sintomático pero completamente ambulatorio, 2= en cama <50% del día, 3= en cama>50% del día pero no postrado en cama, 4= postrado en cama)|  Cuantitativo| 
+| ph.karno   |Puntuación de desempeño de Karnofsky (malo = 0 - bueno = 100) calificado por el médico |  Cuantitativo| 
+| pat.karno     |Puntuación de desempeño de Karnofsky según la calificación del paciente|  Cuantitativo| 
+| meal.cal     | Calorías consumidas en las comidas |  Cuantitativo| 
+|  wt.loss    |Pérdida de peso en los últimos seis meses (libras)|  Cuantitativo| 
+
+
+Para visualizar con mayor detalle los datos, convertimos en un data frame la base de datos "lung" del paquete `survival`.
+
+```{r}
+lung <- as.data.frame(lung)
+```
+## Análisis exploratorio
+
+Veamos las primeras 10 filas de la base de datos "lung".
+
+```{r}
+head(lung, n=10) 
+```
+Notamos que todas las variables son numéricas y hay valores faltantes en la base de datos. Vamos a comprobar esto último.
+
+
+**Valores perdidos**
+
+```{r}
+table(complete.cases(lung)) # Explorar
+```
+En la base de datos hay 61 valores perdidos. A través del siguiente gráfico podremos conocer en qué variables hay más valores perdidos. 
+
+```{r}
+aggr_plot <- aggr(lung,
+                  col=c('navyblue','red'),
+                  numbers=TRUE, 
+                  sortVars=TRUE, 
+                  labels=names(data),
+                  cex.axis=.6, 
+                  gap=4)
+```
+Como se puede observar, las variables "meal.cal"  y "wt.loss" tienen más valores perdidos, seguidos de las variables "pat.karno", "inst", "ph.ecog" y "ph.karno".  Nos quedaremos solo con los casos completos.
+
+```{r}
+
+lung <-lung[complete.cases(lung), ] #Quedarnos solo con casos completos
+
+table(complete.cases(lung)) #comprobamos que ya no figura FALSE
+```
+**Estructura de los datos**
+
+```{r}
+str(lung)
+```
+Efectivamente, todas la variables son tratadas como numéricas continuas. Así que vamos a convertir a la variable "sex", "status" y "ph.ecog" en factor.
+
+
+```{r}
+lung$sex <-as.factor(lung$sex)
+
+str(lung) #comprobamos
+```
+
+**Descripción de los datos**
+
+```{r}
+summary(lung)
+```
+
+
+## Análisis de correlación
+
+```{r}
+
+correlation <- lung %>% select("inst", "time", "status", "age", "ph.ecog",
+"ph.karno", "pat.karno",
+"meal.cal", "wt.loss")
+
+correlations <- cor(correlation)
+
+corrplot(correlations, type="upper", method="color")
+```
+
+A partir del gráfico anterior podemos decir que hay una fuerte correlación entre la variable "ph.karno" y "ph.ecog", y entre las variables "meal.cal" y "pat.karno".
+
+## Analisis de supervivencia
+
+Se utiliza para la predicción, puntuación y análisis en los que se hace seguimiento de un sujeto durante un periodo de tiempo determinado desde el inicio hasta el término del evento. En este análisis la variable de interés es conocida como "tiempo de vida", "tiempo de surpervivencia" o "tiempo de falla". Las observaciones censuradas, que son aquellas que desaparecen del estudio o en las que no se produce el evento de interés durante el tiempo de observación, nos dan información parcial sobre la variable tiempo. 
+
+
+### Preparamos la data 
+
+Es necesario especificar que _Y_ es = variable de tiempo + variable de evento (muerte vs censura), es por ello que creamos una nueva variable llamada "survival".  La función `Surv` nos permite construir un objeto de supervivencia (variable de respuesta).  
+
+
+```{r}
+lung$survival <- with(lung, Surv( time, event = status))
+
+lung$survival
+```
+
+### Curva de Kaplan - Meier (KM)
+
+Grafica la probabilidad de supervivencia acumulada a lo largo del tiempo. Este procedimiento se realiza para observar la dinámica de supervivencia. Cuando no ocurre ningún evento la curva es horizontal y cae verticalmente ante la ocurrencia de un evento. Utilizamos la función `survfit` del paquete `survival` para estimar la curva de KM, además, optamos por el intervalo de confianza "log-log" que es la más utilizada por producir intervalos que se comportan bien. No se considera ninguna agrupación, por lo que especificamos una intersección (~ 1).
+
+
+```{r}
+KM.general <- survfit(survival ~ 1, data = lung, conf.type = "log-log")
+KM.general
+
+```
+
+Vemos que la función `survfit` nos brinda un resumen de las curvas de supervivencia. Nos muestra el número de observaciones, el número de eventos, la mediana de supervivencia y los intérvalos de confianza para la mediana. 
+
+Utilizamos la función `ggsurvplot` del paquete `survminer` para graficar las curvas de supervivencia. 
+
+```{r}
+# creamos un objeto para centrar el título
+centr <- theme(plot.title = element_text(hjust = 0.5))
+
+#graficamos
+ggsurvplot(KM.general, 
+            xlab="Tiempo en días", 
+            ylab="Probabilidad de supervivencia ",
+          title= "Curva de supervivencia",
+            risk.table=TRUE,
+            conf.int=TRUE, pval = TRUE,
+            surv.median.line="hv", ggtheme = centr,  risk.table.title="Número de sujetos en riesgo", palette="purple")
+
+```
+
+El gráfico anterior nos muestra el comportamiento de la población de estudio y además dibuja la línea horizontal y vertical de la mediana. Veamos ahora de forma comparativa por género. 
+
+
+```{r}
+KM.SEXO <- survfit(survival ~ sex, data = lung, conf.type = "log-log")
+KM.SEXO
+```
+Graficamos:
+
+
+```{r}
+ggsurvplot ((KM.SEXO), 
+           xlab="Tiempo en días", 
+           ylab="Probabilidad de supervivencia",
+           title= "Curva de supervivencia por sexo",
+           pval = TRUE, 
+           risk.table=TRUE,
+           risk.table.fontsize = 2.5, # ajuste de tamaño
+           conf.int=TRUE,  
+           surv.median.line="hv", 
+           risk.table.title="Número de sujetos en riesgo",  
+           legend.labs=c("Masculino", "Femenino"), 
+           palette=c("skyblue", "pink"), 
+           ggtheme=centr)
+
+```
+
+
+## Regresión de Cox
+
+En el análisis de supervivencia el modelo de regresión más utilizado es la regresión de Cox, dada su flexibilidad y dado que, a la hora de interpretar los coeficientes, es algo más simple que el resto de los modelos propuestos. Este modelo, denominado también modelo de hazards o de riesgos proporcionales, se utiliza para detectar relaciones existentes entre el riesgo que se produce en un determinado individuo en el estudio y algunas variables independientes y/o explicativas; de esta forma, nos permite evaluar dentro de un conjunto de variables cuáles tienen relación o influencia sobre la función de riesgo y la función de supervivencia, ya que ambas funciones están conectadas. 
+
+
+### Regresión simple
+
+```{r}
+reg_simple <-coxph(survival~sex, data=lung )
+reg_simple
+```
+La variable "sexo" tiene un p value de 0.01, lo cual indica una fuerte relación entre el sexo de los pacientes y la disminución de riesgo de muerte. 
+
+### Regresión multiple
+
+#### Método Forward
+
+* **Modelos de primer orden**
+```{r}
+modelo1.1 <- coxph(survival ~ sex, data =  lung)
+modelo1.1
+```
+```{r}
+modelo1.2 <- coxph(survival ~ age, data =  lung)
+modelo1.2
+```
+```{r}
+modelo1.3 <- coxph(survival ~ ph.karno, data =  lung)
+modelo1.3
+```
+```{r}
+modelo1.4 <- coxph(survival ~ wt.loss, data =  lung)
+modelo1.4
+```
+Mientras mayor el Likelihood ratio test, mayor el ajuste del modelo. Se observa, en este caso, que "sex" es la variable que entra primero en el modelo.
+`
+
+* **Modelos de segundo orden**
+
+```{r}
+modelo2.1 <- coxph(survival ~ sex + age, data =  lung)
+modelo2.1
+```
+```{r}
+modelo2.2 <- coxph(survival ~ sex + ph.karno, data =  lung)
+modelo2.2
+```
+```{r}
+modelo2.3 <- coxph(survival ~ sex + wt.loss, data =  lung)
+modelo2.3
+```
+El Likelihood ratio test de "sex" y "ph.karno" es 9.28, es el mayor entre todos los modelos. En consecuencia, "pk.karno" es la segunda variable que ingresa al modelo.
+
+* **Modelos de tercer orden**
+
+```{r}
+modelo3.1 <- coxph(survival ~ sex + ph.karno + age , data =  lung)
+modelo3.1
+```
+
+```{r}
+modelo3.2 <- coxph(survival ~ sex + ph.karno + wt.loss , data =  lung)
+modelo3.2
+```
+Las variables "sex", "ph.karno" y "age" son las que entran en el modelo.
+
+* **Modelos de cuarto orden**
+```{r}
+modelo4.1 <- coxph(survival ~ sex + ph.karno + age + wt.loss, data =  lung)
+modelo4.1
+```
+Las variables "sex", "ph.karno" y "age" son las que entran en el modelo.
+
+**Calculo del AIC del mejor modelo de cada orden**
+
+```{r}
+CalculoAIC <- list(modelo1.1 , modelo2.2, modelo3.1, modelo4.1)
+
+#Especificar los nombres del modelo
+NamesAIC <- c('Modelo1', 'Modelo2', 'Modelo3', 'Modelo4')
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = CalculoAIC, modnames = NamesAIC) 
+```
+Podemos visualizar que el Modelo 2 es el que tiene el AIC menor, en consecuencia, es el mejor modelo. Es decir, de acuerdo al metodo Forward las variables "sex" y "ph.karno" son las variables que mejor se relacionan con la variable "survival".
+
+#### Metodo Stepwise
+
+Como este metodo inicia con una regresión con todas las variables utilizaremos el modelo 4.1.
+
+```{r}
+modelo4.1 <- coxph(survival ~ sex + ph.karno + age + wt.loss, data =  lung)
+stats::step(modelo4.1)
+```
+Este metodo confirma que las variables "sex" y "ph.karno" conforman el mejor modelo. Es decir, el modelo2.2 es el mejor.
+
+
+
+
+## Analisis post regresión
+
+### Prueba de la suposición de riesgos proporcionales
+
+Esta suposición se comprueba a través de las pruebas estadísticas y gráficas de los residuos de Schoenfeld escalados. Los residuos de Schoenfeld son independientes del tiempo, por lo tanto, si un gráfico muestra un patrón no aleatorio contra el tiempo es evidencia de violación de esta suposición. Se rechaza la prueba si hay una relación significativa entre los residuos y el tiempo.
+
+
+```{r}
+cox.zph(modelo2.2, transform="km", global=TRUE)
+```
+Tenga en cuenta que obtenemos una prueba global y una prueba separada para cada predictor. Ninguno presenta problemas importantes. 
+
+Podemos trazar los residuos de Schoenfeld escalados directamente con `ggcoxzph` del paquete `survminer`.
+
+```{r}
+ggcoxzph(cox.zph(modelo2.2))
+```
+Se puede realizar otro gráfico de riesgos proporcionales con la función `ggforest`. El modelo es presentado en dos estructuras.
+
+
+```{r}
+ggforest(modelo2.2, data = lung)
+```
+
+### Prueba de hipotesis para evaluar la proporcionalidad de los Hazards
+
+Veamos estadísticamente:
+```{r}
+(rev.modelo2.2 <- cox.zph(modelo2.2))
+```
+Veamos gráficamente:
+```{r}
+plot(rev.modelo2.2)
+```
+
+### Prueba de observaciones influyentes
+
+La observación o caso influyente es aquella que altera los coeficientes de regresión en una cantidad significativa cuando se incluye en el conjunto de datos para ajustar el modelo de regresión.
+
+Si bien las observaciones influyentes no violan necesariamente ningún supuesto de regresión, pueden generar dudas sobre las conclusiones extraídas de su muestra.
+
+```{r message=FALSE, warning=FALSE}
+ggcoxdiagnostics(modelo2.2, type = , linear.predictions = TRUE)
+```
+Si especificamos argumento `type = “dfbeta”` , traza los cambios estimados en los coeficientes de regresión al eliminar cada observación; asimismo, produce los cambios estimados en los coeficientes divididos por sus errores estándar.
+
+```{r message=FALSE, warning=FALSE}
+ggcoxdiagnostics(modelo2.2, type = "dfbeta",
+                 linear.predictions = FALSE, ggtheme = theme_bw())
+```
+
+### Prueba de colinealidad 
+
+Si el RR es menor que 1 implica que la variable tiene un efecto protector, y si es mayor que 1 que es factor de riesgo. Utilizamos el paquete `rms`. 
+```{r}
+vif(modelo2.2)
+```
+Se tiene una ligera colinealidad.
+
+### Distribución estimada de los tiempos de supervivencia.
+
+Habiendo ajustado un modelo de Cox a los datos, es posible visualizar la proporción de supervivencia prevista en cualquier momento dado para un grupo de riesgo en particular. La función `survfit` estima la proporción de supervivencia, por defecto en los valores medios de las covariables.
+```{r message=FALSE, warning=FALSE}
+ggsurvplot(survfit(modelo2.2, data = lung), color = "#2E9FDF",
+           ggtheme = theme_minimal())
+```
+
+## Resumen del capítulo
+
+En este capítulo resaltamos la importancia del análisis de superviviencia para la predicción de los eventos. Asimismo realizamos un regresión simple con la variable sexo para conocer el grado de relación con la supervivencia de cáncer al pulmón, además de métodos múltiples que en anteriores capítulos se conocieron. Para un análisis post regresión las prueba de Hazards y de colinealidad, así como de residuos, son importantes.
