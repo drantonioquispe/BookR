@@ -1,0 +1,843 @@
+---
+title: "Regresión de Poisson"
+author: "PhD. Antonio M. Quispe"
+date: "16/11/2022"
+output:
+  word_document: default
+  html_document: default
+---
+# Regresión de Poisson
+
+Los modelos de regresión expresan la asociación entre una variable de conteo y una o más variables independientes. El conteo es el número de veces que ocurre un evento. En este capítulo realizaremos un análisis de regresión de Poisson. Durante el análisis, se calcula la razón de prevalencia e intervalo de confianza de las variables de interés. Además, se construyen modelos de regresión con el objetivo de encontrar el modelo óptimo y aplicar los supuestos post-regresión necesarios. Con el análisis de regresión de Poisson se pueden obtener resultados valiosos para la comprensión y predicción de eventos, permitiendo la identificación de variables que puedan tener una mayor influencia en su ocurrencia. 
+
+## Objetivos de aprendizaje
+
+Después de finalizar este capítulo deberías ser capaz de:
+
+* Realizar un análisis y manejo previo de datos. 
+* Estimar la razón de prevalencia e intervalo de confianza.
+* Aplicar modelos de regresión de Poisson.
+* Seleccionar el modelo más óptimo de una regresión.
+* Realizar un análisis post regresión.
+
+
+## Paquetes
+
+```{r message=FALSE, warning=FALSE}
+#instalamos paquetes
+#install.packages("dplyr")
+#install.packages("tableone")
+#install.packages("Epi")
+#install.packages("foreign")
+#install.packages("sandwich")
+#install.packages("lmtest")
+#install.packages("AICcmodavg")
+#install.packages("tidyverse")
+#install.packages("coefplot")
+#install.packages("broom")
+
+#llamamos a los paquetes
+library(dplyr) #manejo de datos
+library(tableone) #resumen descriptivo de datos
+library(Epi) #análisis demográfico y epidemiológico en el diagrama Lexis
+library(foreign) #lee archivos
+library(sandwich)#estimadores de matrices de covarianza robustos a modelos.
+library(lmtest) #prueba de modelos
+library(AICcmodavg) #selección de modelos
+library(tidyverse) #manipulación de datos
+library(broom) #diagnóstico
+library(coefplot) #coeficientes
+```
+## Estudio de caso
+
+Durante la pandemia de COVID-19, los casos de violencia contra la mujer se incrementaron debido a que se potenciaron factores de riesgo tras las drásticas medidas de emergencia sanitaria que dictaron la mayoría de gobiernos en el mundo. En este estudio, analizaremos la violencia física contra las mujeres en el Perú durante el año 2021, a partir de la base de datos del programa del Ministerio de la Mujer, Aurora. 
+
+Al momento de cargar la base de datos "violencia_2021", usamos "sep" para separar las comas y "utf-8" para que R reconozca las tildes de la base de datos. Puede encontrar la base de datos de violencia durante el año 2021 en el siguiente enlace [Bases de datos Cap9](https://github.com/drantonioquispe/BookR/tree/main/Poisson%20regression)
+
+```{r}
+violencia_2021 <- read.csv("violencia_2021.csv", sep = ",", encoding = "ISO-8859-1")
+```
+
+Observamos que la base de datos comprende solo el año 2021. 
+
+## Análisis exploratorio
+
+Seleccionamos las variables de interés y las guardamos en el nuevo objeto denominado "violencia".
+
+```{r}
+violencia <- violencia_2021 %>% 
+  dplyr::select(`crime_violence_type`,`agressor_sec_education`,
+                `agressor_age_group_0_39`,`agressor_job_status`,
+              `victim_filesacomplaint`,`victim_age_group_0_39`,
+              `agressor_foreign`)
+```
+
+
+|  Variable      |     Descripción      | Tipo de variable |
+|:-----|:-----------------|:-------------|
+| crime_violence_type (variable dependiente)| Tipo de violencia efectuado contra la víctima    | Cualitativo| 
+|agressor_sec_education  | Agresor con educación secundaria (positivo/negativo) |    Cualitativo| 
+| agressor_age_group_0_39       |   Edad del agresor se encuentra dentro del rango 0-39 (positivo/negativo)|  Cualitativo| 
+| agressor_job_status |  Agresor trabaja (positivo/negativo)|  Cualitativo| 
+| victim_filesacomplaint    |Víctima realizó la denuncia (Sí/no)| Cualitativo| 
+| victim_age_group_0_39     | Edad de la víctima se encuentra dentro del rango 0-39 (positivo/negativo) |  Cualitativo| 
+| agressor_foreign     | Agresor es extranjero (positivo/negativo) |  Cualitativo| 
+
+
+Todas nuestras variables seleccionadas son cualitativas.
+
+**Estructura de las variables**
+```{r}
+str(violencia)
+```
+Las variables son cualitativas dicotómicas, es decir, solo pueden tomar dos valores (Sí/No o Positivo/Negativo), con excepción de la variable "crime_violence_type" que es nominal y donde cada tipo de violencia comprende un comportamiento y actitud distinto.
+
+
+**Características de la violencia contra la mujer peruana**
+
+La función `CreateTableOne`, del paquete `tableone`, nos permite resumir todas las variables.
+
+```{r}
+CreateTableOne(data=violencia)
+```
+
+Como podemos ver en el resultado anterior, esta función nos brinda un resumen de todos nuestros datos en una tabla. Nos muestra el número de registros (n) así como el porcentaje de nuestras variables. Con respecto al tipo de violencia, la violencia psicológica es la más preponderante (45%), seguido de la violencia física (39.6%) y sexual (15.1%).
+
+
+**Violencia física**
+
+El objetivo es analizar la violencia física contra las mujeres, así que nos quedamos solo con los casos de violencia física. Creamos una nueva variable denominada "tipo_violencia" que contiene los mismos datos que "crime_violence_type". Esta nueva columna servirá de respaldo ante los cambios que haremos a la variable "crime_violence_type". 
+
+```{r}
+violencia$tipo_violencia=
+  violencia$crime_violence_type
+```
+Ahora, convertimos los casos violencia física en "1" y los que no, en "0". Para ello, utilizamos la función `ifelse`. Esta función nos permite especificar el dato que queremos reemplazar. Para este ejemplo, de la variable "crime_violence_type", especificamos "Violencia Física" y agregamos en el argumento "1,0", de esta forma se reemplazará "Violencia Física" por "1" y los que no, por "0". 
+
+```{r}
+violencia$crime_violence_type <-ifelse(violencia$crime_violence_type==
+                                         "Violencia Física" ,1,0)
+
+str(violencia$crime_violence_type) #comprobamos
+```
+Podemos verificar que se reemplazó adecuadamente al comparar la columna "crime_violence_type" con la columna, anteriormente creada, "tipo_violencia". Ahora que dicotomizamos la variable dependiente en violencia física ("1") y otro tipo de violencia ("0"), cambiamos el nombre de la variable "crime_violence_type" a "victimas_vfisica" y eliminamos la variable "tipo_violencia". 
+
+```{r}
+#cambiamos de nombre a la variable
+
+names(violencia)[names(violencia) ==
+                   "crime_violence_type"] <- "victimas_vfisica"
+
+names(violencia) #comprobamos
+
+#eliminamos la variable "tipo_violencia"
+violencia$tipo_violencia <-NULL
+```
+Asimismo, cambiamos el nombre del objeto a "violencia_fisica"
+
+```{r}
+violencia_fisica  <- violencia
+```
+
+## Análisis bivariado
+
+Utilizaremos la prueba de Chi2 para conocer la relación entre dos variables cualitativas.
+
+El p value es inferior a 0.05, por lo tanto, rechazamos la hipótesis nula y concluimos que hay una asociación significativa entre las víctimas de violencia física y los agresores con educación secundaria.
+
+
+### víctimas de vfisica vs edad del agresor <40
+```{r}
+chisq.test(violencia_fisica$victimas_vfisica,
+           violencia_fisica$agressor_age_group_0_39)
+```
+Hay una fuerte relación entre las víctimas de violencia física y los agresores menores de 40 años. 
+
+### víctimas de vfisica vs agresor trabaja
+
+```{r}
+chisq.test(violencia_fisica$victimas_vfisica,
+           violencia_fisica$agressor_job_status)
+```
+### víctimas de vfisica vs víctima denuncia
+```{r}
+chisq.test(violencia_fisica$victimas_vfisica,
+           violencia_fisica$victim_filesacomplaint)
+```
+
+Existe una relación entre las víctimas de violencia física y las denuncias que éstas realizan. 
+
+### víctimas de vfisica vs edad de la víctima <40
+```{r}
+chisq.test(violencia_fisica$victim_age_group_0_39,
+           violencia_fisica$victimas_vfisica)
+```
+Existe una relación entre las víctimas de violencia física y su edad inferior a 40 años.
+
+### víctimas de vfisica vs agresor extranjero
+```{r}
+chisq.test(violencia_fisica$victimas_vfisica,
+           violencia_fisica$agressor_foreign)
+```
+
+Como hemos podido comprobar, en todos los casos se rechaza la hipótesis nula al ser el p-value inferior a 0.05. Esto quiere decir que existe una fuerte asociación entre las variables independientes con la variable dependiente.
+
+
+## Regresión de Poisson 
+
+Es similar a la regresión logística en el sentido de que las variables dependientes son discretas. Sin embargo, en la regresión logística las variables dependientes son proporciones, mientras que la regresión de Poisson trabaja con datos de conteo. 
+
+De esa manera, los modelos de regresión de Poisson expresan la asociación entre una variable desenlace de tipo conteo (Y = 0,1,2,3…) y una o más variables independientes (X’s). El conteo hace referencia al número de veces de ocurrencia de un evento en una misma unidad de observación durante un determinado periodo de tiempo o espacio. Resultan especialmente útiles para modelar valores enteros no negativos y cuando la frecuencia de ocurrencia es baja. 
+
+
+**Ejemplo de aplicaciones**
+
+|  Conteos en el tiempo    | 
+|:-----|
+|Número de accidentes de tráfico en un tramo de cierta carretera en un mes|
+|Número del registro de partículas de una desintegración radioactiva por segundo| 
+| Número de mutaciones en una población de animales durante 5 años| 
+
+
+|  Conteos en el espacio    | 
+|:-----|
+| Número de accidentes de tráfico que se originan en el cruce de 2 carreteras|
+|Número de organismos infecciosos propagados en una placa agárica| 
+| Número de células sanguíneas en una muestra de sangre (el espacio es igual al volumen en centímetros cúbicos)| 
+| Número de árboles infectados por hectárea en un bosque| |  Número de pasas en una masa por kg| 
+
+Al igual que en el capítulo anterior, utilizaremos la función `glm` que no solo nos permite ejecutar modelos de regresión logística, sino también, dada su flexibilidad, modelos con datos de conteo. 
+
+
+**Conversión de variables**
+
+Para nuestro análisis, los valores tienen que ser numéricos, así que convertimos las variables dicotómicas a numéricas.
+
+
+```{r}
+#educación del agresor
+violencia_fisica$agressor_sec_education<-
+  ifelse(violencia_fisica$agressor_sec_education==
+                                                  "Positive",1,0)
+```
+```{r}
+#agresor de 0-39 años
+violencia_fisica$agressor_age_group_0_39<-
+  ifelse(violencia_fisica$agressor_age_group_0_39==
+                                                   "Positive",1,0)
+
+```
+```{r}
+# agresor trabaja
+violencia_fisica$agressor_job_status<-
+  ifelse(violencia_fisica$agressor_job_status==
+                                              "Positive",1,0)
+```
+```{r}
+#victima denuncia
+violencia_fisica$victim_filesacomplaint<-
+  ifelse(violencia_fisica$victim_filesacomplaint
+                                            =="Si",1,0)
+```
+```{r}
+#victima edad 0-39
+violencia_fisica$victim_age_group_0_39<-
+  ifelse(violencia_fisica$victim_age_group_0_39==
+                                                "Positive",1,0)
+```
+```{r}
+#agresor extranjero
+violencia_fisica$agressor_foreign<-
+  ifelse(violencia_fisica$agressor_foreign==
+                                           "Positive",1,0)
+
+```
+
+### Renombramos variables
+
+```{r}
+names(violencia_fisica)[names(violencia_fisica) ==
+                          "agressor_sec_education"] <- "agresor_edu"
+names(violencia_fisica)[names(violencia_fisica) ==
+                          "agressor_age_group_0_39"] <- "agresor_0_39"
+names(violencia_fisica)[names(violencia_fisica) ==
+                          "agressor_job_status"] <- "agresor_trabaja"
+names(violencia_fisica)[names(violencia_fisica) ==
+                          "victim_filesacomplaint"] <- "victima_denuncia"
+names(violencia_fisica)[names(violencia_fisica) ==
+                          "victim_age_group_0_39"] <- "victima_0_39"
+names(violencia_fisica)[names(violencia_fisica) ==
+                          "agressor_foreign"] <- "agresor_extranjero"
+
+names(violencia_fisica)#comprobamos
+```
+### Modelo de primer orden
+#### agresor_edu
+```{r}
+modelo_1.1 <-glm(victimas_vfisica ~ agresor_edu, data=violencia_fisica, 
+                 family=poisson(link=log))
+
+summary(modelo_1.1)
+```
+Interpretación del output de un modelo de regresión de Poisson: 
+
+- El modelo (call): glm(formula = victimas_vfisica ~ agresor_edu, family = poisson(link = log), 
+    data = violencia_fisica)
+
+- Lo ideal es que los residuos de desviación se distribuyan simétricamente, sin embargo, no parece ser el caso en este ejemplo. Esto probablemente se deba a la sobredispersión de los datos.
+
+- El coeficiente estimado para el intercepto, -0017829, es el recuento logarítmico de las víctimas de violencia física cuando la educación secundaria del agresor es igual a 0. Mientras que un cambio de una unidad en la educación secundaria del agresor, añade un recuento logarítmico de -0.013819. Observamos, también, que la relación no es estadísticamente significativa (0.113).
+
+##### Razon de prevalencia e intervalo de confianza
+
+Los modelos de varianza robusta resuelven el problema de una varianza grande y representan una mejora para la regresión de Poisson. A continuación, vamos a agregar varianzas robustas al modelo glm de Poisson con el paquete `sandwich`, además, utilizamos la función `coeftest` del paquete `lmtest` para aplicarlo a las pruebas _z_ o de Wald.
+
+
+```{r}
+#Coeficientes
+coef<-coeftest(modelo_1.1,vcov=sandwich)
+coef
+```
+Notamos que existe una relación significativa entre la educación del agresor y las víctimas de violencia física. Así como cambios en el valor z y el error estimado. 
+
+Veamos ahora el intervalo de confianza.
+
+
+```{r}
+B <-coef["agresor_edu", "Estimate"]
+SE<-coef["agresor_edu","Std. Error"]
+
+#Razón de prevalencia: punto de estimación
+exp(B)
+
+#Intérvalo inferior
+exp(B+ qnorm(0.05/ 2)*SE)
+
+#Intervalo superior
+exp(B + qnorm(1-0.05/2)*SE)
+
+#Unión de los intervalos + redondeo 
+Li=exp(B+qnorm(1-0.05/2)*SE)
+Ls=exp(B+qnorm(0.05/2)*SE)
+
+PR=exp(B)
+print(paste(round(PR,3)," (", round(Li,3),"-", round(Ls,3),")"))
+```
+#### agresor 0-39 años
+```{r}
+modelo_1.2 <-glm(victimas_vfisica ~ agresor_0_39, data=violencia_fisica, family=poisson(link=log))
+
+summary(modelo_1.2)
+```
+##### Razon de prevalencia e intervalo de confianza
+
+```{r}
+#Coeficientes
+coef<-coeftest(modelo_1.2,vcov=sandwich)
+coef
+```
+
+
+```{r}
+B <-coef["agresor_0_39", "Estimate"]
+SE<-coef["agresor_0_39","Std. Error"]
+
+#Razón de prevalencia: punto de estimación
+exp(B)
+
+#Intérvalo inferior
+exp(B+ qnorm(0.05/ 2)*SE)
+
+#Intervalo superior
+exp(B + qnorm(1-0.05/2)*SE)
+
+#Unión de los intervalos + redondeo 
+Li=exp(B+qnorm(1-0.05/2)*SE)
+Ls=exp(B+qnorm(0.05/2)*SE)
+
+PR=exp(B)
+print(paste(round(PR,3)," (", round(Li,3),"-", round(Ls,3),")"))
+```
+#### agresor trabaja
+
+```{r}
+modelo_1.3 <-glm(victimas_vfisica ~ agresor_trabaja, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_1.3)
+```
+##### Razon de prevalencia e intervalo de confianza
+
+```{r}
+#Coeficientes
+coef<-coeftest(modelo_1.3,vcov=sandwich)
+coef
+```
+
+
+```{r}
+B <-coef["agresor_trabaja", "Estimate"]
+SE<-coef["agresor_trabaja","Std. Error"]
+
+#Razón de prevalencia: punto de estimación
+exp(B)
+
+#Intérvalo inferior
+exp(B+ qnorm(0.05/ 2)*SE)
+
+#Intervalo superior
+exp(B + qnorm(1-0.05/2)*SE)
+
+#Unión de los intervalos + redondeo 
+Li=exp(B+qnorm(1-0.05/2)*SE)
+Ls=exp(B+qnorm(0.05/2)*SE)
+
+PR=exp(B)
+print(paste(round(PR,3)," (", round(Li,3),"-", round(Ls,3),")"))
+
+```
+
+#### victima denuncia
+
+```{r}
+modelo_1.4 <-glm(victimas_vfisica ~ victima_denuncia, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_1.4)
+```
+##### Razon de prevalencia e intervalo de confianza
+
+```{r}
+#Coeficientes
+coef<-coeftest(modelo_1.4,vcov=sandwich)
+coef
+```
+
+
+```{r}
+B <-coef["victima_denuncia", "Estimate"]
+SE<-coef["victima_denuncia","Std. Error"]
+
+#Razón de prevalencia: punto de estimación
+exp(B)
+
+
+#Intérvalo inferior
+exp(B+ qnorm(0.05/ 2)*SE)
+
+#Intervalo superior
+exp(B + qnorm(1-0.05/2)*SE)
+
+
+#Unión de los intervalos + redondeo 
+Li=exp(B+qnorm(1-0.05/2)*SE)
+Ls=exp(B+qnorm(0.05/2)*SE)
+
+PR=exp(B)
+print(paste(round(PR,3)," (", round(Li,3),"-", round(Ls,3),")"))
+
+```
+#### agresor extranjero
+
+```{r}
+modelo_1.5 <-glm(victimas_vfisica ~ agresor_extranjero, data=violencia_fisica, 
+                 family=poisson(link=log))
+
+summary(modelo_1.5)
+```
+##### Razon de prevalencia e intervalo de confianza
+
+```{r}
+#Coeficientes
+coef<-coeftest(modelo_1.5,vcov=sandwich)
+coef
+```
+```{r}
+B <-coef["agresor_extranjero", "Estimate"]
+SE<-coef["agresor_extranjero","Std. Error"]
+
+#Razón de prevalencia: punto de estimación
+exp(B)
+
+#Intérvalo inferior
+exp(B+ qnorm(0.05/ 2)*SE)
+
+#Intervalo superior
+exp(B + qnorm(1-0.05/2)*SE)
+
+#Unión de los intervalos + redondeo 
+Li=exp(B+qnorm(1-0.05/2)*SE)
+Ls=exp(B+qnorm(0.05/2)*SE)
+
+PR=exp(B)
+print(paste(round(PR,3)," (", round(Li,3),"-", round(Ls,3),")"))
+```
+#### victima 0-39
+
+```{r}
+modelo_1.6 <-glm(victimas_vfisica ~ victima_0_39, data=violencia_fisica, 
+                 family=poisson(link=log))
+
+summary(modelo_1.6)
+```
+```{r}
+#Coeficientes
+coef<-coeftest(modelo_1.6,vcov=sandwich)
+coef
+```
+
+
+```{r}
+B <-coef["victima_0_39", "Estimate"]
+SE<-coef["victima_0_39","Std. Error"]
+
+#Razón de prevalencia: punto de estimación
+exp(B)
+
+
+#Intérvalo inferior
+exp(B+ qnorm(0.05/ 2)*SE)
+
+#Intervalo superior
+exp(B + qnorm(1-0.05/2)*SE)
+
+
+#Unión de los intervalos + redondeo 
+Li=exp(B+qnorm(1-0.05/2)*SE)
+Ls=exp(B+qnorm(0.05/2)*SE)
+
+PR=exp(B)
+print(paste(round(PR,3)," (", round(Li,3),"-", round(Ls,3),")"))
+```
+#### Comparando modelos de primer orden
+
+```{r}
+#Definir la lista de modelos
+models1 <- list(modelo_1.1, modelo_1.2 , modelo_1.3,modelo_1.4,modelo_1.5,modelo_1.6)
+
+#Especificar los nombres del modelo
+mod.names <- c('agresor_edu','agresor_0_39', 'agresor_trabaja', 'victima_denuncia', 'agresor_extranjero','victima_0_39')
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models1, modnames = mod.names)
+```
+El mejor modelo es el modelo 1.2 
+
+### Modelos de segundo orden 
+
+```{r}
+modelo_2.1 <-glm(victimas_vfisica ~ agresor_0_39 + agresor_edu, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_2.1)
+```
+```{r}
+modelo_2.2 <-glm(victimas_vfisica ~ agresor_0_39 + agresor_trabaja , data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_2.2)
+```
+```{r}
+modelo_2.3 <-glm(victimas_vfisica ~ agresor_0_39 + victima_denuncia, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_2.3)
+```
+```{r}
+modelo_2.4 <-glm(victimas_vfisica ~ agresor_0_39 + victima_0_39, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_2.4)
+```
+```{r}
+modelo_2.5 <-glm(victimas_vfisica ~ agresor_0_39 + agresor_extranjero, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_2.5)
+
+```
+
+#### Comparando modelos de segundo orden 
+
+```{r}
+#Definir la lista de modelos
+models2 <- list(modelo_2.1, modelo_2.2 , modelo_2.3,modelo_2.4,modelo_2.5)
+
+#Especificar los nombres del modelo
+mod.names2 <- c('agresor_edu','agresor_trabaja', 'victima_denuncia', 'victima_0_39', 'agresor_extranjero')
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models2, modnames = mod.names2)
+```
+El mejor modelo es el 2.3.
+
+### Modelos de tercer orden
+
+```{r}
+modelo_3.1 <-glm(victimas_vfisica ~  agresor_0_39 + victima_denuncia + agresor_edu, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_3.1)
+```
+```{r}
+modelo_3.2 <-glm(victimas_vfisica ~  agresor_0_39 + victima_denuncia + agresor_trabaja, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_3.2)
+```
+```{r}
+modelo_3.3 <-glm(victimas_vfisica ~  agresor_0_39 + victima_denuncia + victima_0_39, data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_3.3)
+```
+```{r}
+modelo_3.4 <-glm(victimas_vfisica ~  agresor_0_39 + victima_denuncia + agresor_extranjero, data=violencia_fisica, 
+                 family=poisson(link=log))
+
+summary(modelo_3.4)
+```
+
+#### Comparando modelos de tercer orden 
+
+```{r}
+#Definir la lista de modelos
+models3 <- list(modelo_3.1, modelo_3.2 , modelo_3.3,modelo_3.4)
+
+#Especificar los nombres del modelo
+mod.names3 <- c('vic_denun.agr_edu','vic_denun.agr_trabaja', 'vic_denun.vic_0_39', 'vic_denun.agr_ext')
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models3, modnames = mod.names3)
+```
+El mejor modelo es el 3.2.
+
+### Modelos de cuarto orden
+
+```{r}
+modelo_4.1 <-glm(victimas_vfisica ~  agresor_0_39 + victima_denuncia + agresor_trabaja + agresor_edu ,
+                 data=violencia_fisica, 
+                 family=poisson(link=log))
+
+summary(modelo_4.1)
+```
+```{r}
+modelo_4.2 <-glm(victimas_vfisica ~  agresor_0_39 + victima_denuncia + agresor_trabaja + victima_0_39,
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_4.2)
+```
+```{r}
+modelo_4.3 <-glm(victimas_vfisica ~  agresor_0_39 + victima_denuncia + agresor_trabaja + agresor_extranjero ,
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_4.3)
+```
+
+#### Comparamos los modelos de cuarto orden
+
+```{r}
+#Definir la lista de modelos
+models4 <- list(modelo_4.1, modelo_4.2 , modelo_4.3)
+
+#Especificar los nombres del modelo
+mod.names4 <- c('agresor_edu', 'victima_0_39','agresor_extranjero' )
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models4, modnames = mod.names4)
+```
+El mejor modelo es el 4.1
+
+### Modelos de quinto orden
+
+```{r}
+modelo_5.1 <-glm(victimas_vfisica ~  agresor_0_39 + victima_denuncia + agresor_trabaja + agresor_edu + victima_0_39, 
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_5.1)
+```
+```{r}
+modelo_5.2 <-glm(victimas_vfisica ~ agresor_0_39 + victima_denuncia + agresor_trabaja + agresor_edu + agresor_extranjero,
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_5.2)
+```
+
+#### Comparamos los modelos de quinto orden
+
+```{r}
+#Definir la lista de modelos
+models5 <- list(modelo_5.1, modelo_5.2 )
+
+#Especificar los nombres del modelo
+mod.names5 <- c('victima_0_39', 'agresor_extranjero')
+ 
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models5, modnames = mod.names5)
+```
+Nos quedamos con el modelo 5.2.
+
+### Modelos de sexto orden 
+
+```{r}
+modelo_6 <-glm(victimas_vfisica ~ agresor_0_39 + victima_denuncia + agresor_trabaja + agresor_edu + agresor_extranjero + victima_0_39, 
+               data=violencia_fisica,
+               family=poisson(link=log))
+
+summary(modelo_6)
+```
+
+El mejor modelo es el 6 ya que tiene menor AIC que los modelos anteriores.
+
+## Análisis post-regresión
+
+### Modificador de efecto
+
+#### Modelo 7
+
+```{r}
+modelo_7.1 <-glm(victimas_vfisica ~ agresor_0_39 * victima_denuncia + agresor_trabaja + agresor_edu + agresor_extranjero + victima_0_39, 
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_7.1)
+```
+
+```{r}
+modelo_7.2 <-glm(victimas_vfisica ~ agresor_0_39 * agresor_trabaja + victima_denuncia + agresor_trabaja + agresor_edu + agresor_extranjero + victima_0_39,
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_7.2)
+```
+```{r}
+modelo_7.3 <-glm(victimas_vfisica ~ agresor_0_39 * agresor_edu + victima_denuncia + agresor_trabaja  + agresor_extranjero + victima_0_39, 
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_7.3)
+```
+```{r}
+modelo_7.4 <-glm(victimas_vfisica ~ agresor_0_39 *  agresor_extranjero + victima_denuncia + agresor_trabaja + agresor_edu + victima_0_39, 
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_7.4)
+```
+```{r}
+modelo_7.5 <-glm(victimas_vfisica ~ agresor_0_39 * victima_0_39 + victima_denuncia + agresor_trabaja +  agresor_edu + agresor_extranjero ,
+                 data=violencia_fisica,
+                 family=poisson(link=log))
+
+summary(modelo_7.5)
+```
+
+#### Comparando los modelos con modificador de efecto
+
+```{r}
+#Definir la lista de modelos
+models7 <- list(modelo_7.1, modelo_7.2 , modelo_7.3,modelo_7.4, modelo_7.5)
+
+#Especificar los nombres del modelo
+mod.names7 <- c('me_denuncia','me_agresor_edu', 'me_agresor_trabaja',  'me_agresor_extranjero', 'me_victima_0_39')
+
+#Calcular el AIC de cada modelo
+aictab(cand.set = models7, modnames = mod.names7)
+```
+El modelo final es el 7.5.
+
+### Análisis de sensibilidad de valores influyentes
+
+#### Diagnóstico de métricas del modelo final 7.5
+
+Puedes aumentar fácilmente tus datos para agregar valores ajustados y residuales usando la función `augment` del paquete `broom`. Denominamos al objeto "model.diag.metrics" porque contiene varias métricas útiles para el diagnóstico de regresión.
+
+```{r}
+model.diag.metrics <- augment(modelo_7.5)
+
+head(model.diag.metrics)
+```
+### Diagnostico del modelo 
+
+Las gráficas de diagnóstico muestran residuos de cuatro maneras diferentes:
+
+#### Residuales vs Ajustados
+
+Se utiliza para comprobar los supuestos de relación lineal. Una línea horizontal, sin patrones definidos, es una indicación de una relación lineal, lo que es bueno.
+
+```{r}
+plot(modelo_7.5, 1)
+```
+
+#### Q-Qnormal
+
+Se utiliza para examinar si los residuos se distribuyen normalmente. Es bueno si los puntos residuales siguen la línea recta discontinua.
+```{r}
+plot(modelo_7.5, 2)
+```
+
+#### Scale-Location (o Spread-Location)
+
+Se utiliza para comprobar la homogeneidad de varianza de los residuos (homocedasticidad). La línea horizontal con puntos igualmente separados es una buena indicación de homocedasticidad. Este no es el caso en nuestro ejemplo, donde tenemos un problema de heterocedasticidad.
+```{r}
+plot(modelo_7.5,3)
+```
+
+#### Residuales vs Apalancamiento.
+
+Se utiliza para identificar casos influyentes, es decir, valores extremos que pueden influir en los resultados de la regresión cuando se incluyen o excluyen del análisis. 
+
+```{r}
+plot(modelo_7.5, 5)
+```
+
+
+#### Distancia de Cook
+
+```{r}
+plot (modelo_7.5,4)
+```
+Si deseas ver estas 3 observaciones principales con la distancia de Cook más alta a fin de evaluarlas más a fondo, escribe el siguiente código:
+
+```{r}
+model.diag.metrics %>%
+  top_n(3, wt = .cooksd)
+```
+
+En nuestro ejemplo, los datos no presentan ningún punto influyente. Las líneas de distancia de Cook (una línea discontinua roja) no se muestran en el gráfico Residuales vs Apalancamiento porque todos los puntos están bien dentro de las líneas de distancia de Cook. 
+
+
+### Intervalo de confianza
+
+La función `confint` calcula los intervalos de confianza para los parámetros de un modelo ajustado.
+
+```{r message=FALSE, warning=FALSE}
+confint(modelo_7.5)
+```
+
+#### Intervalo de confianza de las razones de probabilidad
+
+```{r}
+exp(confint(modelo_7.5, level=0.99))
+```
+#### Grado de coeficientes
+
+A partir de los intervalos de confianza de los coeficientes se puede obtener una salida gráfica de la estimación del modelo, esto nos permite ubicar las pendientes relativas de cada predictor.
+```{r}
+coefplot(modelo_7.5)  + 
+  theme_minimal()
+```
+```{r}
+# Sin agregar el tema minimalista
+coefplot(modelo_7.5)
+```
+
+
+## Resumen del capítulo
+
+La base de datos exigió un manejo de datos previo a fin de que estuviera preparada para obtener la razón de prevalencia y los intervalos de confianza de las variables seleccionadas. Para ello, tuvimos que convertir las variables en numéricas. Con el método Stepwise modelamos la regresión y realizamos un análisis de sensibilidad, un diagnóstico completo del modelo final. Asimismo, el uso de gráficos de diagnóstico del modelo, nos permitieron verificar los supuestos del modelo, evaluando si el modelo de regresión de Poisson es adecuado para describir los datos, si hay patrones sistemáticos en los residuos, puntos influyentes o valores atípicos que podrían afectar la calidad del ajuste del modelo.
