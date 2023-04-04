@@ -1,0 +1,189 @@
+```{r}
+#instalamos paquetes
+
+#install.packages("readr")
+#install.packages("dplyr")
+#install.packages("VIM")
+#install.packages("ggplot2")
+#install.packages("corrplot")
+#install.packages("AICcmodavg")
+#install.packages("coefplot")
+#install.packages("effects")
+
+```
+
+```{r}
+#llamamos a los paquetes
+library(haven) #lee archivos .dta
+library(dplyr)#manipular data
+library(scales)
+library(VIM) #valores perdidos
+library(ggplot2) # gráficos
+library(corrplot) #correlación
+library(AICcmodavg) #comparar modelos
+library(coefplot)#coeficientes
+library(effects) #efectos
+```
+
+```{r}
+data <-read_dta("http://stats.idre.ucla.edu/stat/stata/dae/binary.dta")
+```
+
+```{r}
+str(data)
+dim(data)
+table(complete.cases(data)) # Explorar 
+
+```
+
+Descripción de los datos
+
+```{r}
+summary(data[,2:3])
+table(data$admit)
+table(data$rank)
+```
+Exploración gráfica
+
+```{r}
+data1 <- data
+data1$admit <-as.factor(data1$admit)
+data1$rank <-as.factor(data1$rank)
+
+str(data1) #comprobamos
+
+plot <- data1 %>% count(admit) %>% 
+  mutate(count=n/sum(n), countlabel= paste0(round(count*100), "%"))
+
+ggplot(plot, aes(x = admit, y=count)) + 
+  geom_bar(stat="identity", fill= "gray",
+           color= "black") + 
+    labs(x = "Estudiantes no admitidos y admitidos", 
+       y = "Conteo", 
+       title = "Distribución de estudiantes \n a programas de postgrado") +  
+  scale_y_continuous(labels = comma) +
+geom_text(aes(label=countlabel), vjust=-0.2)  + 
+  theme(plot.title = element_text(hjust = 0.5)) #centrar título
+plot <- data1 %>% count(rank) %>% 
+  mutate(count=n/sum(n), countlabel= paste0(round(count*100), "%"))
+
+
+ggplot(plot, aes(x = rank, y=count)) + 
+  geom_bar(stat="identity", fill= "orange",
+           color= "black") + 
+    labs(x = "Nivel de prestigio", 
+       y = "Conteo", 
+       title = "Nivel de prestigio de las universidades de pregrado \n de las que provienen los candidatos a postgrado") +  
+  scale_y_continuous(labels = function(x) x*nrow(data1)) +
+geom_text(aes(label=countlabel), vjust=-0.2)  + 
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+ggplot(data1, aes(x = gre)) +
+  geom_histogram(fill= "beige", color="black") + 
+  labs(x = "Puntaje obtenido en el gre",y = "Conteo",title = "Distribución GRE")
+
+ggplot(data1, aes(x = gpa)) +
+  geom_histogram(fill= "antiquewhite2", color="black") + 
+  labs(x = "Promedio de calificaciones acumulado GPA",y = "Conteo", title = "Distribución GPA")
+```
+Analisis de correlación
+
+```{r}
+correlacion <-cor(data)
+corrplot(correlacion, type="upper")
+
+```
+Regresión binomial
+
+```{r}
+#Método Forward
+#Modelo nulo
+model0 <- glm(admit ~ gre, family = binomial (link="log"), data = data)
+summary(model0)
+
+#Modelos de primer orden
+modelo_1.1 <- glm(admit ~ gre, family=binomial(link = "log"), data=data)
+
+summary (modelo_1.1)
+modelo_1.2 <- glm( admit ~ gpa, family=binomial(link = "log"), data=data)
+
+summary (modelo_1.2)
+modelo_1.3 <- glm( admit ~ rank, family=binomial(link = "log"), data=data)
+
+summary (modelo_1.3)
+
+```
+
+```{r}
+#Comparando los modelos de primer orden
+CalculoAIC <-list(modelo_1.1, modelo_1.2, modelo_1.3)
+# especificar nombres
+NamesAIC <- c('modelo1.1', 'modelo1.2', 'modelo1.3')
+
+#calcular AIC
+aictab(cand.set=CalculoAIC, modnames = NamesAIC)
+
+```
+
+Análisis post regresión
+
+```{r}
+#Prueba Wald
+
+#Subconjunto de la lista de coeficientes
+##columna 1: estimados
+summary(modelo_1.3)$coefficients[,1]
+#Subconjunto de la lista de coeficientes
+##columna 2: errores estándar
+summary(modelo_1.3)$coefficients[,2]
+```
+
+```{r}
+#Estimar el valor z
+ValorZ <- summary(modelo_1.1)$coefficients[,1]/summary(modelo_1.1)$coefficients[,2]
+
+ValorZ
+```
+
+```{r}
+#Probilidad de z en una distribución normal con media 0 y sigma 1
+
+ProbabilidadZ <- (1 - pnorm(abs(ValorZ), 0, 1)) * 2  
+ProbabilidadZ
+
+```
+
+
+```{r}
+#Intervalo de confianza
+
+confint(modelo_1.3)
+```
+
+```{r}
+#Intervalo de confianza de las razones de probabilidad
+
+exp(confint(modelo_1.3, level=0.99))
+```
+
+```{r}
+#Grado de coeficientes
+coefplot(modelo_1.3)  + 
+  theme_minimal()
+
+```
+
+```{r}
+#Graficando los efectos
+allEffects(modelo_1.3)
+```
+
+
+
+
+
+
+
+
+
+
